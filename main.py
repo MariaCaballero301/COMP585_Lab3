@@ -1,13 +1,12 @@
-
-#LAB 3 MOVING AROUND AN OBSTICLE
-
 #!/usr/bin/env pybricks-micropython
 
+#LAB 3 MOVING AROUND AN OBSTACLE
+
 from pybricks.hubs import EV3Brick
-from pybricks.ev3devices import Motor, TouchSensor, UltrasonicSensor
+from pybricks.ev3devices import Motor, TouchSensor, UltrasonicSensor, GyroSensor
 from pybricks.parameters import Port, Button
-from pybricks.tools import wait
-from pybricks.robotics import DriveBase
+from pybricks.tools import wait, StopWatch
+import math
 
 # Initialize EV3
 ev3 = EV3Brick()
@@ -20,54 +19,170 @@ right_motor = Motor(Port.C)
 ultrasonic = UltrasonicSensor(Port.S3)
 right_touch = TouchSensor(Port.S1)
 left_touch = TouchSensor(Port.S2)
+gyro = GyroSensor(Port.S4)
 
-# Initialize drive base
-robot = DriveBase(left_motor, right_motor,
-                  wheel_diameter=55.5, axle_track=104)
+# CONSTANTS (mm, deg/s, ms)
+WHEEL_DIAMETER = 55.5     # mm -> CALIBRATE
+SPEED = 200               # motor speed in deg/s (~97 mm/s) -> test faster
+MIN_DIST = 100            # wall-following range
+MAX_DIST = 120
+FAR_DIST = 250            # wall lost -> outer corner
+AWAY_DIST = 500           # must get this far from hit point first
+HIT_RADIUS = 200          # "back at the hit point"
+TIME_LIMIT = 100000       # 100 s -> go home before 2 min
 
-# Robot settings
-robot.settings(straight_speed=100)
+# Pose (global variables)
+x = 0.0
+y = 0.0
+prev_left = 0
+prev_right = 0
 
-# Assignment distances (mm)
-forward_distance = 1400
-wall_distance = 400
-reverse_distance = 400
+# FUNCTIONS
+def wait_for_center_button():
+    while Button.CENTER not in ev3.buttons.pressed():
+        wait(10)
 
-# Sensor placement adjustments (mm)
-ultrasonic_offset = 20
-reverse_offset = 55
+def bumped():
+    return left_touch.pressed() or right_touch.pressed()
 
-# 1. Move forward 1.4 meters
-robot.straight(forward_distance)
+def update_pose():
+    # No GPS -> dead reckoning: pose must be updated constantly
+    global x, y, prev_left, prev_right
+    left = left_motor.angle()
+    right = right_motor.angle()
+    dL = (left - prev_left) * math.pi * WHEEL_DIAMETER / 360
+    dR = (right - prev_right) * math.pi * WHEEL_DIAMETER / 360
+    prev_left = left
+    prev_right = right
+    d = (dL + dR) / 2
+    theta = (90 - gyro.angle()) * math.pi / 180   # degrees -> radians
+    x = x + d * math.cos(theta)
+    y = y + d * math.sin(theta)
 
-# 2. Beep until center button is pressed
-while Button.CENTER not in ev3.buttons.pressed():
-    ev3.speaker.beep()
-    wait(100)
+def stop():
+    left_motor.brake()
+    right_motor.brake()
 
-ev3.screen.clear()
+def turn_right(deg):
+    # deg > 0 -> clockwise (right), deg < 0 -> counter-clockwise (left)
+    # Gyro pattern: in pybricks the gyro angle grows when turning right
+    target = gyro.angle() + deg
+    while abs(target - gyro.angle()) > 2:
+        error = target - gyro.angle()
+        # slow down near the target to avoid overshoot
+        speed = max(60, min(SPEED, abs(error) * 4))
+        if error > 0:
+            left_motor.run(speed)
+            right_motor.run(-speed)
+        else:
+            left_motor.run(-speed)
+            right_motor.run(speed)
+        wait(5)
+    stop()
 
-# 3. Move until robot is 40 cm from wall
+def drive_distance(dist_mm, speed):
+    # speed > 0 forward, speed < 0 backward
+    start = (left_motor.angle() + right_motor.angle()) / 2
+    target_deg = dist_mm * 360 / (math.pi * WHEEL_DIAMETER)
+    while abs((left_motor.angle() + right_motor.angle()) / 2 - start) < target_deg:
+        left_motor.run(speed)
+        right_motor.run(speed)
+        update_pose()
+        wait(10)
+    stop()
+
+# MAIN CODE
+wait_for_center_button()          # press first, then stay still for the reset
+wait(500)                         # let the robot settle after pressing the button
+gyro.reset_angle(0)
+left_motor.reset_angle(0)
+right_motor.reset_angle(0)
+prev_left = 0
+prev_right = 0
+x = 0.0
+y = 0.0
+away = False
+timer = StopWatch()
+
+# 1 go toward the obstacle
+while not bumped():
+    left_motor.run(SPEED)
+    right_motor.run(SPEED)
+    update_pose()
+    wait(10)
+stop()
+update_pose()
+ev3.speaker.beep()
+hit_x = x
+hit_y = y
+
+drive_distance(30, -SPEED)        # back up a bit so the bumper doesn't scrape while turning
+turn_right(90)
+update_pose()                     # syncs prev_left/prev_right after the turn
+
+# 2 Follow the wall
+TARGET = (MIN_DIST + MAX_DIST) / 2      # 110 mm, ideal distance to the wall
+KP = 1.5                                # proportional gain -> tune (try 0.5, 1.5, 4)
+
 while True:
-    robot.drive(100, 0)
-    distance = ultrasonic.distance()
-    ev3.screen.print(distance)
-
-    if distance < wall_distance + ultrasonic_offset:
-        robot.stop()
-
-        while Button.CENTER not in ev3.buttons.pressed():
-            ev3.speaker.beep()
-            wait(100)
-
+    update_pose()
+    dist_hit = math.sqrt((x - hit_x) ** 2 + (y - hit_y) ** 2)
+    if dist_hit > AWAY_DIST:
+        away = True
+    if (away and dist_hit < HIT_RADIUS) or timer.time() > TIME_LIMIT:
         break
 
-    wait(100)
+    if bumped():
+        stop()
+        drive_distance(40, -SPEED)
+        update_pose()
+        turn_right(25)
+        update_pose()
+    else:
+        u = ultrasonic.distance()
+        if u > FAR_DIST:
+            # wall lost -> outer corner: sharp curve left
+            left_motor.run(SPEED * 0.3)
+            right_motor.run(SPEED)
+        else:
+            # P-control: the further from TARGET, the stronger the correction
+            error = u - TARGET                              # >0 too far -> steer left
+            turn = KP * error
+            turn = max(-SPEED * 0.5, min(SPEED * 0.5, turn))  # limit the correction
+            left_motor.run(SPEED - turn)
+            right_motor.run(SPEED + turn)
+    wait(10)
+  
+# Return to the start point
+stop()
+update_pose()
+ev3.speaker.beep()
 
-# 4. Move until touch sensor hits wall
-while True:
-    robot.drive(100, 0)
+return_dist = math.sqrt(x ** 2 + y ** 2)
+return_angle = math.atan2(-y, -x) * 180 / math.pi   # math convention (CCW +)
 
-    if right_touch.pressed() or left_touch.pressed():
-        robot.straight(-(reverse_distance - reverse_offset))
+current_angle = 90 - gyro.angle()                     # same convention
+diff = return_angle - current_angle                   # CCW positive
+while diff > 180:
+    diff -= 360
+while diff < -180:
+    diff += 360
+
+turn_right(-diff)     # turn_right uses CW positive, so flip the sign
+update_pose()
+
+# Drive home holding the heading with the gyro
+target_gyro = gyro.angle()
+start = (left_motor.angle() + right_motor.angle()) / 2
+target_deg = return_dist * 360 / (math.pi * WHEEL_DIAMETER)
+while abs((left_motor.angle() + right_motor.angle()) / 2 - start) < target_deg:
+    if bumped():
         break
+    correction = (gyro.angle() - target_gyro) * 5     # drifted right -> steer left
+    left_motor.run(SPEED - correction)
+    right_motor.run(SPEED + correction)
+    update_pose()
+    wait(10)
+
+stop()
+ev3.speaker.beep()
