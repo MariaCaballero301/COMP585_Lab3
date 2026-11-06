@@ -18,8 +18,8 @@ right_motor = Motor(Port.C)
 # Initialize sensors
 ultrasonic = UltrasonicSensor(Port.S3)
 right_touch = TouchSensor(Port.S1)
-left_touch = TouchSensor(Port.S2)
-gyro = GyroSensor(Port.S4)
+left_touch = TouchSensor(Port.S4)
+gyro = GyroSensor(Port.S2)
 
 # CONSTANTS (mm, deg/s, ms)
 WHEEL_DIAMETER = 55.5     # mm -> CALIBRATE
@@ -136,7 +136,7 @@ while True:
         stop()
         drive_distance(40, -SPEED)
         update_pose()
-        turn_right(25)
+        turn_right(45)
         update_pose()
     else:
         u = ultrasonic.distance()
