@@ -1,2 +1,2 @@
-# COMP585_Lab3
+# COMP581_Lab3
 Moving around an obstacle
