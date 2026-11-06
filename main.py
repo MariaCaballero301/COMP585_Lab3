@@ -29,7 +29,7 @@ MAX_DIST = 120
 FAR_DIST = 250            # wall lost -> outer corner
 AWAY_DIST = 500           # must get this far from hit point first
 HIT_RADIUS = 200          # "back at the hit point"
-TIME_LIMIT = 100000       # 100 s -> go home before 2 min
+TIME_LIMIT = 1000000       # 100 s -> go home before 2 min
 
 # Pose (global variables)
 x = 0.0
@@ -124,19 +124,23 @@ update_pose()                     # syncs prev_left/prev_right after the turn
 TARGET = (MIN_DIST + MAX_DIST) / 2      # 110 mm, ideal distance to the wall
 KP = 1.5                                # proportional gain -> tune (try 0.5, 1.5, 4)
 
+best_dist = 99999
 while True:
-    update_pose()
-    dist_hit = math.sqrt((x - hit_x) ** 2 + (y - hit_y) ** 2)
-    if dist_hit > AWAY_DIST:
-        away = True
-    if (away and dist_hit < HIT_RADIUS) or timer.time() > TIME_LIMIT:
+        if (away and dist_hit < HIT_RADIUS):
+        if dist_hit < best_dist:
+            best_dist = dist_hit              # todavía acercándose
+        elif dist_hit > best_dist + 10:       # ya se aleja (10 mm de margen por ruido)
+            break
+    if timer.time() > TIME_LIMIT:
         break
-
+        
     if bumped():
         stop()
         drive_distance(40, -SPEED)
         update_pose()
-        turn_right(45)
+        turn_right(60)
+        update_pose()
+        drive_distance(40, SPEED)
         update_pose()
     else:
         u = ultrasonic.distance()
