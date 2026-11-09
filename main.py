@@ -2,6 +2,8 @@
 
 #LAB 3 MOVING AROUND AN OBSTACLE
 
+# version 1 consistente 
+
 from pybricks.hubs import EV3Brick
 from pybricks.ev3devices import Motor, TouchSensor, UltrasonicSensor, GyroSensor
 from pybricks.parameters import Port, Button
@@ -12,7 +14,7 @@ import math
 ev3 = EV3Brick()
 
 # Initialize motors
-left_motor = Motor(Port.B)
+left_motor = Motor(Port.B) # recordamos que los motores tienen letras (A,B,C..) y los sensores números
 right_motor = Motor(Port.C)
 
 # Initialize sensors
@@ -23,7 +25,7 @@ gyro = GyroSensor(Port.S2)
 
 # CONSTANTS (mm, deg/s, ms)
 WHEEL_DIAMETER = 55.5     # mm -> CALIBRATE
-SPEED = 200               # motor speed in deg/s (~97 mm/s) -> test faster
+SPEED = 400               # motor speed in deg/s (~97 mm/s) -> test faster
 MIN_DIST = 100            # wall-following range
 MAX_DIST = 120
 FAR_DIST = 250            # wall lost -> outer corner
@@ -40,7 +42,7 @@ prev_right = 0
 # FUNCTIONS
 def wait_for_center_button():
     while Button.CENTER not in ev3.buttons.pressed():
-        wait(10)
+        wait(15)
 
 def bumped():
     return left_touch.pressed() or right_touch.pressed()
@@ -63,9 +65,9 @@ def stop():
     left_motor.brake()
     right_motor.brake()
 
-def turn_right(deg):
+def turn_right(deg): 
     # deg > 0 -> clockwise (right), deg < 0 -> counter-clockwise (left)
-    # Gyro pattern: in pybricks the gyro angle grows when turning right
+    # Gyro pattern: in pybricks the gyro angle grows when turning right 
     target = gyro.angle() + deg
     while abs(target - gyro.angle()) > 2:
         error = target - gyro.angle()
@@ -122,18 +124,19 @@ update_pose()                     # syncs prev_left/prev_right after the turn
 
 # 2 Follow the wall
 TARGET = (MIN_DIST + MAX_DIST) / 2      # 110 mm, ideal distance to the wall
-KP = 1.5                                # proportional gain -> tune (try 0.5, 1.5, 4)
+KP = 1.5                            # proportional gain 
 
-best_dist = 99999
 while True:
-        if (away and dist_hit < HIT_RADIUS):
-        if dist_hit < best_dist:
-            best_dist = dist_hit              # todavía acercándose
-        elif dist_hit > best_dist + 10:       # ya se aleja (10 mm de margen por ruido)
-            break
-    if timer.time() > TIME_LIMIT:
+    update_pose()
+    dist_hit = math.sqrt((x - hit_x) ** 2 + (y - hit_y) ** 2)   # Pitágoras
+    if dist_hit > AWAY_DIST:
+        away = True
+    if (away and dist_hit < HIT_RADIUS) or timer.time() > TIME_LIMIT:
         break
-        
+
+    if bumped():
+        stop()
+
     if bumped():
         stop()
         drive_distance(40, -SPEED)
