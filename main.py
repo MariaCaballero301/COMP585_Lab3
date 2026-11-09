@@ -2,8 +2,6 @@
 
 #LAB 3 MOVING AROUND AN OBSTACLE
 
-# version 1 consistente 
-
 from pybricks.hubs import EV3Brick
 from pybricks.ev3devices import Motor, TouchSensor, UltrasonicSensor, GyroSensor
 from pybricks.parameters import Port, Button
@@ -14,7 +12,7 @@ import math
 ev3 = EV3Brick()
 
 # Initialize motors
-left_motor = Motor(Port.B) # recordamos que los motores tienen letras (A,B,C..) y los sensores números
+left_motor = Motor(Port.B)
 right_motor = Motor(Port.C)
 
 # Initialize sensors
@@ -25,13 +23,13 @@ gyro = GyroSensor(Port.S2)
 
 # CONSTANTS (mm, deg/s, ms)
 WHEEL_DIAMETER = 55.5     # mm -> CALIBRATE
-SPEED = 400               # motor speed in deg/s (~97 mm/s) -> test faster
+SPEED = 200               # motor speed in deg/s (~97 mm/s)
 MIN_DIST = 100            # wall-following range
 MAX_DIST = 120
 FAR_DIST = 250            # wall lost -> outer corner
 AWAY_DIST = 500           # must get this far from hit point first
 HIT_RADIUS = 200          # "back at the hit point"
-TIME_LIMIT = 1000000       # 100 s -> go home before 2 min
+TIME_LIMIT = 1000000      # 100 s -> go home before 2 min
 
 # Pose (global variables)
 x = 0.0
@@ -42,7 +40,7 @@ prev_right = 0
 # FUNCTIONS
 def wait_for_center_button():
     while Button.CENTER not in ev3.buttons.pressed():
-        wait(15)
+        wait(10)
 
 def bumped():
     return left_touch.pressed() or right_touch.pressed()
@@ -65,9 +63,8 @@ def stop():
     left_motor.brake()
     right_motor.brake()
 
-def turn_right(deg): 
+def turn_right(deg):
     # deg > 0 -> clockwise (right), deg < 0 -> counter-clockwise (left)
-    # Gyro pattern: in pybricks the gyro angle grows when turning right 
     target = gyro.angle() + deg
     while abs(target - gyro.angle()) > 2:
         error = target - gyro.angle()
@@ -83,7 +80,6 @@ def turn_right(deg):
     stop()
 
 def drive_distance(dist_mm, speed):
-    # speed > 0 forward, speed < 0 backward
     start = (left_motor.angle() + right_motor.angle()) / 2
     target_deg = dist_mm * 360 / (math.pi * WHEEL_DIAMETER)
     while abs((left_motor.angle() + right_motor.angle()) / 2 - start) < target_deg:
@@ -106,7 +102,7 @@ y = 0.0
 away = False
 timer = StopWatch()
 
-# 1 go toward the obstacle
+# 1. Go toward the obstacle
 while not bumped():
     left_motor.run(SPEED)
     right_motor.run(SPEED)
@@ -122,21 +118,21 @@ drive_distance(30, -SPEED)        # back up a bit so the bumper doesn't scrape w
 turn_right(90)
 update_pose()                     # syncs prev_left/prev_right after the turn
 
-# 2 Follow the wall
+# 2. Follow the wall
 TARGET = (MIN_DIST + MAX_DIST) / 2      # 110 mm, ideal distance to the wall
-KP = 1.5                            # proportional gain 
+KP = 1.5                            # proportional gain
 
 while True:
     update_pose()
-    dist_hit = math.sqrt((x - hit_x) ** 2 + (y - hit_y) ** 2)   # Pitágoras
+    dist_hit = math.sqrt((x - hit_x) ** 2 + (y - hit_y) ** 2)
+    
     if dist_hit > AWAY_DIST:
         away = True
+
+    # Condición de llegada al hit point con seguridad de tiempo
     if (away and dist_hit < HIT_RADIUS) or timer.time() > TIME_LIMIT:
         break
-
-    if bumped():
-        stop()
-
+        
     if bumped():
         stop()
         drive_distance(40, -SPEED)
